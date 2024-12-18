@@ -26,7 +26,7 @@ def get_gpu_info():
 
 def parse_args(args=None):
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model_name', type=str, default=None, help="raw model name for evaluation", choices=["rwkv-4-14b-pile","long_llama_3b","LLaMA-2-7B-32K","chatglm2-6b-32k"])
+    parser.add_argument('--model_name', type=str, default=None, help="raw model name for evaluation", )
     parser.add_argument('--task', type=str, default=None, help="long context understanding tasks in LooGLE", choices=["shortdep_qa","longdep_qa","longdep_summarization","shortdep_cloze"])
     parser.add_argument('--max_length', type=int, default=None, help="the max length of input prompt")
 
@@ -37,7 +37,7 @@ def parse_args(args=None):
 
 
 
-def get_pred(model, data_instance, tokenizer, max_length, max_gen, prompt_format, device):
+def get_pred(model, data_instance, tokenizer, max_length, max_gen, prompt_format):
 
     ans, groundtruth = [], []
     preds = {}
@@ -53,7 +53,7 @@ def get_pred(model, data_instance, tokenizer, max_length, max_gen, prompt_format
             prompt = tokenizer.decode(tokenized_prompt[:half], skip_special_tokens=True)+tokenizer.decode(tokenized_prompt[-half:], skip_special_tokens=True)
         
         
-        input_ids = tokenizer(prompt, truncation=True, return_tensors="pt").input_ids.to(device)
+        input_ids = tokenizer(prompt, truncation=True, return_tensors="pt").input_ids.to(model.device)
         context_length = input_ids.shape[-1]
         with torch.no_grad():
             output = model.generate(input_ids,max_new_tokens=max_gen,temperature=1.0,num_beams=1,do_sample=False,repetition_penalty=float(2))[0]
@@ -75,7 +75,7 @@ def get_pred(model, data_instance, tokenizer, max_length, max_gen, prompt_format
                 prompt = tokenizer.decode(tokenized_prompt[:half], skip_special_tokens=True)+tokenizer.decode(tokenized_prompt[-half:], skip_special_tokens=True)
             
             
-            input_ids = tokenizer(prompt, truncation=True, return_tensors="pt").input_ids.to(device)
+            input_ids = tokenizer(prompt, truncation=True, return_tensors="pt").input_ids.to(model.device)
             context_length = input_ids.shape[-1]
             with torch.no_grad():
                 output = model.generate(input_ids,max_new_tokens=max_gen,temperature=1.0,num_beams=1,do_sample=False,repetition_penalty=float(2))[0]
@@ -102,14 +102,14 @@ def get_pred(model, data_instance, tokenizer, max_length, max_gen, prompt_format
 
 if __name__ == '__main__':
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     args = parse_args()
 
     data = load_dataset('bigainlco/LooGLE', args.task, split="test")
     #data = loads("LooGLE-testdata/", args.task)
 
-    tokenizer = AutoTokenizer.from_pretrained(args.model_path + args.model_name,trust_remote_code=True)
-    model = AutoModelForCausalLM.from_pretrained(args.model_path + args.model_name, trust_remote_code=True,torch_dtype=torch.bfloat16 ).to(device)
+    tokenizer = AutoTokenizer.from_pretrained(os.path.join(args.model_path, args.model_name),trust_remote_code=True)
+    model = AutoModelForCausalLM.from_pretrained(os.path.join(args.model_path, args.model_name), trust_remote_code=True,torch_dtype=torch.bfloat16, device_map="auto")
     model.eval()
     
     task2prompt = json.load(open("./config/task2prompt.json", "r"))
@@ -118,7 +118,7 @@ if __name__ == '__main__':
     max_gen = task2maxlen[args.task]
 
     for i in data:
-        preds = get_pred(model, i, tokenizer, args.max_length, max_gen, prompt_format, device)
+        preds = get_pred(model, i, tokenizer, args.max_length, max_gen, prompt_format,)
 
         with open(args.output_path + args.task + '_' + args.model_name+".jsonl", "a+") as g:
             g.write(json.dumps(preds)+'\n')
